@@ -1,0 +1,538 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   IK PokéCatch — Premium dark theme
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Reset & base ────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-deep:      #0a0a14;
+  --bg-card:      #0f0f1c;
+  --bg-elevated:  #161628;
+  --border:       #1a1a32;
+  --border-mid:   #272745;
+  --text-primary: #eeeeff;
+  --text-muted:   #4a4a7a;
+  --accent:       #e53935;
+  --accent-soft:  rgba(229, 57, 53, 0.12);
+  --radius-sm:    6px;
+  --radius-md:    12px;
+  --radius-lg:    20px;
+  --shadow:       0 8px 40px rgba(0, 0, 0, 0.7);
+  --transition:   0.18s ease;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── App layout ──────────────────────────────────────────────────────────── */
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 0 16px 36px;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.app-header {
+  display: flex;
+  align-items: center;
+  padding: 18px 0 13px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 32px;
+}
+
+.app-title {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 10px;
+  color: rgba(229, 57, 53, 0.70);
+  letter-spacing: 1px;
+  text-shadow: 0 0 18px rgba(229, 57, 53, 0.28);
+}
+
+/* ── Main ────────────────────────────────────────────────────────────────── */
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.wild-text {
+  text-align: center;
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--text-muted);
+  letter-spacing: 0.5px;
+  animation: fadeIn 0.4s ease;
+}
+
+/* ── Pokémon display — floats on the dark surface ────────────────────────── */
+.pokemon-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 8px 0;
+  animation: slideUp 0.35s ease;
+}
+
+.sprite-container {
+  width: 260px;
+  height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  /* background injected inline per-Pokémon as the rarity aura */
+}
+
+.pokemon-sprite {
+  width: 220px;
+  height: 220px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 6px 24px rgba(0, 0, 0, 0.85));
+  animation: floatSprite 3s ease-in-out infinite;
+}
+
+.sprite-placeholder {
+  font-size: 96px;
+  color: var(--text-muted);
+  opacity: 0.2;
+}
+
+.pokemon-info {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.pokemon-name {
+  font-family: 'Rajdhani', 'Segoe UI', sans-serif;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: capitalize;
+  color: var(--text-primary);
+}
+
+.badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 4px 13px;
+  border-radius: 999px;
+  border: 1.5px solid currentColor;
+}
+
+.badge-rarity {
+  /* color & borderColor set inline via rarity */
+}
+
+.badge-stage {
+  color: var(--text-muted);
+  border-color: var(--border-mid);
+}
+
+/* ── Health status ───────────────────────────────────────────────────────── */
+.health-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  border: 1.5px solid transparent;
+}
+
+.health-healthy {
+  background: rgba(102, 187, 106, 0.10);
+  border-color: rgba(102, 187, 106, 0.45);
+  color: #66bb6a;
+}
+
+.health-damaged {
+  background: rgba(255, 179, 0, 0.10);
+  border-color: rgba(255, 179, 0, 0.45);
+  color: #ffb300;
+}
+
+.health-heavy {
+  background: rgba(239, 83, 80, 0.10);
+  border-color: rgba(239, 83, 80, 0.45);
+  color: #ef5350;
+}
+
+.health-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ── Attempt setter ──────────────────────────────────────────────────────── */
+.attempt-setter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  animation: fadeIn 0.3s ease;
+}
+
+.attempt-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+}
+
+.attempt-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-md);
+  padding: 5px 10px;
+}
+
+.attempt-btn {
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 16px;
+  font-weight: 700;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition), color var(--transition);
+}
+
+.attempt-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.attempt-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.attempt-count {
+  font-size: 16px;
+  font-weight: 700;
+  min-width: 20px;
+  text-align: center;
+}
+
+/* ── Ball selector ───────────────────────────────────────────────────────── */
+.ball-selector {
+  animation: fadeIn 0.3s ease;
+}
+
+.ball-selector-label {
+  text-align: center;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+}
+
+.ball-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.ball-btn {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-md);
+  padding: 12px 8px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  transition: border-color var(--transition), box-shadow var(--transition),
+              transform var(--transition), background var(--transition);
+  color: var(--text-primary);
+}
+
+.ball-btn:hover:not(:disabled) {
+  border-color: var(--ball-color, var(--accent));
+  box-shadow: 0 0 14px color-mix(in srgb, var(--ball-color, var(--accent)) 45%, transparent);
+  background: color-mix(in srgb, var(--ball-color, var(--accent)) 8%, var(--bg-elevated));
+  transform: translateY(-2px);
+}
+
+.ball-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.ball-btn:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.ball-sprite {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.ball-name {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-align: center;
+}
+
+.ball-mult {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+/* ── Catch result ────────────────────────────────────────────────────────── */
+.catch-result {
+  background: var(--bg-card);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-lg);
+  padding: 32px 24px 28px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  animation: zoomIn 0.3s ease;
+  box-shadow: var(--shadow);
+}
+
+.result-success {
+  border-color: rgba(102, 187, 106, 0.45);
+  box-shadow: 0 0 36px rgba(102, 187, 106, 0.12), var(--shadow);
+}
+
+.result-fail {
+  border-color: rgba(239, 83, 80, 0.35);
+  box-shadow: 0 0 36px rgba(239, 83, 80, 0.10), var(--shadow);
+}
+
+.result-icon {
+  font-size: 44px;
+  line-height: 1;
+}
+
+.result-headline {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.result-details {
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.result-sep {
+  opacity: 0.35;
+}
+
+.result-flavour {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.attempts-remaining {
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffb300;
+  letter-spacing: 0.3px;
+}
+
+.btn-next {
+  margin-top: 8px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  padding: 11px 32px;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity var(--transition), transform var(--transition), box-shadow var(--transition);
+  box-shadow: 0 4px 18px rgba(229, 57, 53, 0.30);
+}
+
+.btn-next:hover {
+  opacity: 0.90;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 22px rgba(229, 57, 53, 0.40);
+}
+
+.btn-next:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(229, 57, 53, 0.25);
+}
+
+/* ── Loading screen ──────────────────────────────────────────────────────── */
+.loading-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+}
+
+.pokeball-spinner {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  position: relative;
+  border: 3px solid var(--border-mid);
+  overflow: hidden;
+  animation: spin 1.2s linear infinite;
+}
+
+.pokeball-top {
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 50%;
+  background: var(--accent);
+}
+
+.pokeball-bottom {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 50%;
+  background: var(--bg-elevated);
+}
+
+.pokeball-middle {
+  position: absolute;
+  top: 50%;
+  left: 0; right: 0;
+  height: 3px;
+  background: var(--border-mid);
+  transform: translateY(-50%);
+  z-index: 1;
+}
+
+.loading-text {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 8px;
+  color: var(--text-muted);
+  animation: blink 1.2s step-end infinite;
+}
+
+/* ── Error screens ───────────────────────────────────────────────────────── */
+.error-screen {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+}
+
+.error-detail {
+  font-size: 13px;
+  color: var(--text-muted);
+  max-width: 320px;
+}
+
+.sdk-warning {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(255, 179, 0, 0.07);
+  border: 1px solid rgba(255, 179, 0, 0.35);
+  color: rgba(255, 179, 0, 0.75);
+  border-radius: var(--radius-sm);
+  padding: 5px 14px;
+  font-size: 10px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── Keyframes ───────────────────────────────────────────────────────────── */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+@keyframes floatSprite {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-10px); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes zoomIn {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ── Scrollbar ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg-deep); }
+::-webkit-scrollbar-thumb { background: var(--border-mid); border-radius: 2px; }

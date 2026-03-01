@@ -1,0 +1,428 @@
+================================================================================
+  POKECATCH — CODE REVIEW
+  Reviewed: 2026-02-27
+================================================================================
+
+OVERVIEW
+--------
+PokéCatch is a Discord Embedded Activity (a mini-game that runs inside a
+Discord voice channel). It lets users encounter random Pokémon, choose a
+Poké Ball, and try to catch them. Results are posted to a Discord webhook.
+
+Stack: React 18 + Vite (frontend), Express (backend proxy), Discord
+Embedded App SDK, PokéAPI.
+
+
+--------------------------------------------------------------------------------
+ARCHITECTURE
+--------------------------------------------------------------------------------
+
+The split between the Express server (server.js) and the Vite/React frontend
+is clean and well-reasoned. The server exists solely to:
+  1. Handle the OAuth2 code→token exchange (so the client secret stays
+     server-side only).
+  2. Proxy webhook POSTs to avoid browser CORS restrictions.
+
+This is the correct pattern for Discord Activities and the server stays
+appropriately minimal — it does not try to be a game server.
+
+Vite is configured to proxy /api/* to localhost:3001 in dev, so the
+frontend never needs environment-specific base URLs. Good.
+
+
+--------------------------------------------------------------------------------
+FILE-BY-FILE NOTES
+--------------------------------------------------------------------------------
+
+server.js
+  - Well-documented with clear section headers.
+  - Correctly strips the refresh token from the OAuth response, only
+    forwarding access_token to the client. This is a good security choice.
+  - CORS is applied globally with no origin restriction (app.use(cors())).
+    For a Discord Activity this is fine since Discord controls the iframe
+    origin, but worth noting if the server were ever exposed more broadly.
+  - No rate limiting on the /api/token or /api/webhook endpoints. For a
+    production deployment this could be abused. Low priority given the
+    Discord Activity context, but worth addressing later.
+  - No input sanitisation on the webhook proxy body — whatever the client
+    sends is forwarded as-is. Discord will reject malformed payloads, so
+    this is not dangerous, but it means the server offers no validation
+    layer of its own.
+
+src/hooks/useDiscordSDK.js
+  - The module-level singleton (_sdkInstance) prevents double-initialisation
+    in React StrictMode (which mounts effects twice in dev). Smart.
+  - The cancelled flag pattern correctly prevents state updates on unmounted
+    components.
+  - The guest fallback (id: 'dev', username: 'Trainer') means the game works
+    outside Discord during development. Good DX.
+  - Minor: the check `if (!user)` inside the catch block references the
+    useState variable, which will always be null at that point since the SDK
+    init hasn't succeeded. This is harmless but slightly misleading — the
+    condition is always true on first mount. Could simply be removed.
+  - The eslint-disable comment on the useEffect deps array is a yellow flag.
+    The effect intentionally runs only once, but suppressing the lint rule
+    hides the fact that `user` is referenced inside the effect without being
+    listed as a dep. It works correctly due to the singleton pattern, but
+    it's worth adding a note explaining why the suppression is intentional.
+
+src/hooks/usePokemonEncounter.js
+  - The state machine (idle → loading → ready → result) is clearly described
+    in the JSDoc and faithfully implemented. Easy to follow.
+  - fetchPokemonDetails prefers the official-artwork sprite over the smaller
+    front_default, with a graceful fallback chain. Good.
+  - The webhook post is fire-and-forget (no await, errors logged as warnings).
+    This is the right call — a webhook failure should never block the user.
+  - nextEncounter resets pokemon and result to null before calling
+    spawnPokemon. This means briefly there is no Pokémon to render, which
+    the App handles by showing nothing between the result and loading phases.
+    Not a bug, but if you ever wanted a smoother transition you'd want to
+    keep the previous Pokémon visible until the new one is ready.
+  - The hook takes `user` as a parameter, which is a clean design — it doesn't
+    reach for context or globals.
+
+src/utils/captureSystem.js
+  - The formula (baseRate × ballMultiplier × healthMultiplier, clamped to 1)
+    is simple, transparent, and easy to tune. Good.
+  - Master Ball uses guaranteed: true and short-circuits before the random
+    roll. Clean.
+  - getBallById uses Array.find — fine at four items, and the list won't grow
+    meaningfully.
+  - The BALLS array is exported as a plain array constant. Components depend
+    on it directly, which is fine, but if ball availability ever became
+    dynamic (e.g. limited-stock items) the consumer components would need
+    to change. Not a current problem.
+
+src/utils/encounterSystem.js
+  - weightedRandom is a standard single-pass algorithm and is correctly
+    implemented. The floating-point fallback (return last item) is a safe
+    guard that is rarely needed but good to have.
+  - Health weights (50/35/15) are defined as a plain object. They sum to 1.0,
+    which is required — there's no runtime assertion enforcing this. A comment
+    noting "must sum to 1" is present, which is the minimum. Consider adding a
+    dev-mode assertion if this file is ever edited.
+  - generateEncounter correctly composes selectRandomPokemon and
+    assignHealthState without coupling them.
+
+src/utils/discordWebhook.js
+  - The embed is well-structured and makes good use of Discord's inline fields.
+  - There is a subtle logic issue: the embed.color is set twice. First it is
+    set to a rarity-based colour, then it is overridden to green (0x66bb6a)
+    if the catch was successful. This means a successful catch always shows
+    green regardless of rarity, while a failed catch shows the rarity colour.
+    This may be intentional (green = caught is intuitive) but the first colour
+    assignment on line 35-37 is then partially wasted. Worth cleaning up or
+    documenting the intent.
+  - res.status !== 204 check: Discord returns 204 No Content on success, so
+    this is the correct way to detect a successful webhook POST. Correct.
+
+src/data/pokemonRarity.js
+  - Covers all 1025 Pokémon across Generations 1–9. This is a significant
+    amount of curated data and is the backbone of the spawn system.
+  - The three-column format [id, rarity, stage] is compact and readable.
+  - Spawn weights are computed from the raw data rather than hardcoded, which
+    means editing a rarity tier automatically updates the pool. Good design.
+  - BASE_CATCH_RATES, RARITY_COLORS, RARITY_LABELS, and STAGE_LABELS are all
+    exported from the same file, keeping rarity-related constants co-located.
+
+src/components/
+  - All four components (BallSelector, CatchResult, LoadingScreen,
+    PokemonDisplay) are small, focused, and have no internal state. They are
+    purely presentational, receiving everything they need via props. This is
+    correct — all state lives in the hooks.
+  - BallSelector uses a CSS custom property (--ball-color) set via inline
+    style to drive the hover colour. This is a neat trick that avoids
+    needing per-ball CSS classes.
+  - CatchResult always renders null when result is falsy, providing a safe
+    guard even though the parent already conditionally renders it.
+  - LoadingScreen is reused for both the SDK init phase and the PokéAPI fetch
+    phase with different messages. Simple and effective.
+  - PokemonDisplay shows a '?' placeholder when no sprite is available.
+
+src/App.jsx
+  - The render logic handles all phases in the right order: SDK loading →
+    API loading → API error → main content.
+  - The Pokémon is kept visible (dimly) behind the result card, which is a
+    nice UX touch.
+  - The eslint-disable on the useEffect deps is again suppressing a missing
+    dep (spawnPokemon). It's safe because spawnPokemon is wrapped in
+    useCallback with no deps, so it never changes. Still worth a comment.
+
+src/App.css
+  - Design is cohesive: dark theme, Pokémon red accent, pixel font for titles,
+    modern sans-serif for body text.
+  - CSS custom properties on :root make the colour palette easy to update
+    globally.
+  - All animations (fadeIn, slideUp, zoomIn, floatSprite, spin, blink) are
+    lightweight keyframe animations — no JS animation libraries needed.
+  - The pokeball-spinner is built purely from CSS divs. Clean.
+  - color-mix() is used in the ball button hover state. This is a relatively
+    new CSS feature (baseline 2023). It will not work in older browsers, but
+    for a Discord Activity where Chromium is the only engine this is fine.
+
+
+--------------------------------------------------------------------------------
+WHAT WORKS WELL
+--------------------------------------------------------------------------------
+
+  - Clean separation of concerns: data / utils / hooks / components / server.
+  - State machine in usePokemonEncounter makes the encounter flow predictable.
+  - Dev-mode graceful degradation (guest user, offline play) is thoughtful.
+  - The Express server is appropriately minimal — it doesn't over-engineer
+    what is just a proxy layer.
+  - The weighted spawn system is data-driven and easy to extend.
+  - All async errors are caught and surfaced to the user rather than silently
+    swallowed (except webhook failures, which are intentionally non-fatal).
+  - The UI is polished for a game of this scope.
+
+
+--------------------------------------------------------------------------------
+THINGS TO LOOK AT
+--------------------------------------------------------------------------------
+
+  1. No rate limiting on /api/token or /api/webhook. Low risk in Discord
+     Activity context but worth adding for production robustness.
+
+  2. Double color assignment in discordWebhook.js (lines ~35-68). The first
+     colour set is partially overridden by the second. Clarify intent or
+     consolidate into a single assignment.
+
+  3. The `if (!user)` guard inside useDiscordSDK's catch block is always true
+     on first load — the condition could be simplified or removed.
+
+  4. eslint-disable comments on useEffect dep arrays should have inline
+     comments explaining why the suppression is intentional, so future
+     editors don't accidentally break the singleton/once semantics.
+
+  5. No .env.example file visible in the repo (may exist but wasn't reviewed).
+     The error message in useDiscordSDK.js references ".env.example", so one
+     should exist if not already present.
+
+  6. Health weight sum (must equal 1.0) is enforced only by a comment. A
+     dev-mode assertion would catch accidental edits during future tuning.
+
+  7. No loading state is shown between clicking a ball and showing the result
+     — the result is synchronous so this is fine for now, but if you ever
+     add server-side catch validation there would be a gap to fill.
+
+
+--------------------------------------------------------------------------------
+SUMMARY
+--------------------------------------------------------------------------------
+
+The codebase is well-structured, readable, and appropriately scoped for what
+it does. The separation of concerns is good, the state machine is clear, and
+the Discord integration follows correct patterns (server-side token exchange,
+webhook proxy). The main areas to revisit before a wider production release
+are rate limiting on the backend and the minor logic redundancy in the webhook
+embed colour logic. Overall this is clean, solid work.
+
+================================================================================
+  SECURITY REVIEW — 2 PASSES
+  Reviewed: 2026-02-27
+================================================================================
+
+METHODOLOGY
+-----------
+Pass 1: Surface scan — identify every point where external input enters the
+        system and where data leaves to external services.
+Pass 2: Exploit trace — for each finding, trace the full attacker path from
+        entry to impact to determine real-world severity.
+
+Findings are rated: CRITICAL / HIGH / MEDIUM / LOW / INFO
+
+
+--------------------------------------------------------------------------------
+PASS 1 — SURFACE SCAN: EXTERNAL INPUT & OUTPUT POINTS
+--------------------------------------------------------------------------------
+
+INPUT POINTS (data entering the system):
+  S1. POST /api/token         — receives { code } from any HTTP client
+  S2. POST /api/webhook       — receives arbitrary JSON body from any HTTP client
+  S3. Discord OAuth response  — userData from discord.com API
+  S4. PokéAPI response        — pokemon name, sprite URL from pokeapi.co
+  S5. req.body (Express)      — raw JSON parsed by express.json() middleware
+  S6. req.ip                  — client IP, potentially spoofable behind proxy
+
+OUTPUT POINTS (data leaving to external services):
+  O1. Discord OAuth API       — client_id, client_secret, auth code
+  O2. Discord webhook URL     — full embed payload, constructed client-side
+  O3. Discord REST API        — Bearer token in Authorization header
+  O4. Browser / React render  — apiError string, user.username, pokemon.name,
+                                sprite URL set as img src
+  O5. console.error / warn    — error details including raw Discord API errors
+
+TRUST BOUNDARIES:
+  - The Express server is the only trusted execution context.
+  - The React client runs in the user's browser and is fully controllable
+    by the user or an attacker who bypasses the browser.
+  - Discord's API and PokéAPI are trusted external services.
+  - The webhook URL, once configured, points to a specific Discord channel
+    that real users read.
+
+
+--------------------------------------------------------------------------------
+PASS 2 — EXPLOIT TRACE: FINDINGS WITH REAL-WORLD IMPACT
+--------------------------------------------------------------------------------
+
+[CRITICAL] S2 / O2 — Webhook proxy forwards arbitrary client payloads
+  File: server.js, line 92 (body: JSON.stringify(req.body))
+
+  The /api/webhook endpoint accepts any JSON body from the client and forwards
+  it verbatim to the configured Discord webhook. The server performs no
+  validation or sanitisation of the payload.
+
+  Attack path:
+    1. Attacker identifies or guesses the server address (trivial if deployed
+       publicly, e.g. on Railway, Fly.io, or a VPS).
+    2. Attacker POSTs crafted JSON directly to /api/webhook:
+         curl -X POST https://yourserver.com/api/webhook \
+           -H 'Content-Type: application/json' \
+           -d '{"content":"@everyone FREE NITRO https://evil.com"}'
+    3. Discord delivers the message to the channel as if it were from the bot.
+       @everyone and @here pings work. Links are clickable. Embeds can
+       impersonate other services (bank alerts, Discord system messages, etc).
+
+  Impact:
+    - Spam any message to the Discord channel the webhook targets.
+    - Ping @everyone or @here to notify every server member.
+    - Distribute phishing links or malicious content to channel members.
+    - Impersonate other brands/services via crafted embeds.
+    - This requires NO authentication — any internet-connected machine can do it.
+
+  The rate limiting added previously (30 req/min per IP) reduces volume but
+  does not prevent the attack. Distributed IPs or rotating proxies bypass it.
+
+  Fix required: The server must construct the Discord payload itself from
+  validated, typed fields — it must never forward a client-supplied payload.
+
+---
+
+[HIGH] S1 / S2 — Open CORS allows any browser origin to call the API
+  File: server.js, line 18 (app.use(cors()))
+
+  cors() with no options sets Access-Control-Allow-Origin: * on every
+  response, meaning any webpage on the internet can make credentialed
+  cross-origin requests to the server's endpoints.
+
+  Attack path:
+    1. Attacker hosts a malicious webpage at https://evil.com.
+    2. Page silently calls POST /api/webhook with crafted payload via fetch().
+    3. Server accepts the request and forwards to Discord (see CRITICAL above).
+    4. Victim's browser is used as the attack vector — the request appears to
+       originate from the victim's IP, partially defeating per-IP rate limiting.
+
+  Additionally for /api/token:
+    Discord auth codes are single-use and expire in seconds, so stealing and
+    replaying them is impractical. The open CORS does not materially worsen the
+    token endpoint's exposure, but it is still bad practice.
+
+  Fix required: Restrict CORS to known origins (localhost in dev,
+  the Activity's production domain in prod), configurable via env var.
+
+---
+
+[MEDIUM] S6 — Rate limiter uses req.ip which is unreliable behind a proxy
+  File: server.js, line 27 (key: `${req.ip}:${req.path}`)
+
+  If the server is deployed behind a reverse proxy, load balancer, or CDN
+  (nginx, Cloudflare, Railway, Fly.io, etc.), req.ip resolves to the proxy's
+  IP address, not the real client IP. Every request shares the same key.
+
+  Impact:
+    - All clients share one rate limit bucket — a single legitimate user can
+      exhaust the limit for everyone (accidental DoS).
+    - Alternatively, attacker sends requests through a proxy and the rate
+      limiter counts the proxy as the client, making per-IP limits useless.
+
+  Fix required: Add app.set('trust proxy', 1) so Express reads
+  X-Forwarded-For and resolves the real client IP from the proxy chain.
+
+---
+
+[MEDIUM] S5 — Rate limiter Map grows without bound (memory exhaustion DoS)
+  File: server.js, lines 23 / 30
+
+  The _rateLimitStore Map accumulates one entry per unique (IP + path)
+  combination. Entries are cleaned up only when the same key makes another
+  request. A large number of unique IPs (e.g., from a bot net or scanner)
+  that each make a single request will grow the Map indefinitely until the
+  Node.js process runs out of heap and crashes.
+
+  Impact:
+    - Remote memory exhaustion, crashing the server process.
+    - Denial of service for all users of the app.
+
+  Fix required: Add a periodic cleanup interval that evicts expired entries
+  from the Map regardless of whether that key makes another request.
+
+---
+
+[LOW] O5 — Raw Discord API error forwarded to client leaks internal details
+  File: server.js, line 68 (res.status(response.status).json(data))
+
+  When the Discord token exchange fails, the raw Discord API error body is
+  forwarded directly to the browser client. Discord error responses can
+  include the client_id, requested scopes, error descriptions, and sometimes
+  internal error codes that reveal OAuth app configuration details.
+
+  Impact:
+    - Information disclosure. An attacker probing the endpoint can enumerate
+      the OAuth app's configuration from error messages.
+    - In practice, the client_id is already a public value (embedded in the
+      built JS), so impact is low. Still a bad practice to expose API internals.
+
+  Fix required: Normalise all token exchange errors to a generic response:
+  { error: 'Token exchange failed' } with an appropriate HTTP status code.
+
+---
+
+[INFO] All game logic is client-side — catch results can be fabricated
+  Files: captureSystem.js, encounterSystem.js, usePokemonEncounter.js
+
+  The entire game — encounter generation, ball selection, catch probability
+  calculation — runs in the browser. There is no server-side authoritative
+  result. A user can open DevTools, modify the JavaScript, and post any catch
+  result they choose to the webhook.
+
+  Impact:
+    - Users can claim to have caught any Pokémon with any rarity, posting
+      fabricated results to the Discord channel.
+    - This is an integrity concern, not a safety one. No real users other than
+      the cheater are harmed.
+    - Fully closing this would require moving catch resolution server-side,
+      which is a significant architectural change not warranted for a casual game.
+
+  No fix required at this time. Acceptable risk for the app's scope.
+
+
+--------------------------------------------------------------------------------
+SECURITY FIXES APPLIED (post-review)
+--------------------------------------------------------------------------------
+
+  Fix 1 — CRITICAL: Webhook proxy now constructs payload server-side.
+    The /api/webhook endpoint no longer forwards req.body to Discord. Instead
+    it accepts a structured game-data object { username, pokemonName, rarity,
+    stage, health, ballName, success, chance, spriteUrl }, validates each field,
+    sanitises strings to remove Discord mention injections (@everyone, @here,
+    role/user mention patterns), validates the sprite URL against an allowlist
+    of trusted hostnames, and constructs the Discord embed entirely on the server.
+    An attacker cannot inject arbitrary content into the webhook channel.
+
+  Fix 2 — HIGH: CORS restricted to known origins.
+    cors() replaced with cors({ origin }) using an allowlist populated from
+    the ALLOWED_ORIGINS environment variable (defaults to localhost:5173 for
+    dev). Unknown origins receive a CORS error and cannot reach the API from
+    a browser context.
+
+  Fix 3 — MEDIUM: Trust proxy enabled + rate limiter gets periodic cleanup.
+    app.set('trust proxy', 1) added so req.ip correctly resolves through
+    reverse proxies. A setInterval (60 s, unref'd) evicts all expired entries
+    from _rateLimitStore, bounding memory growth regardless of unique IP count.
+
+  Fix 4 — LOW: Discord token error response normalised.
+    Raw Discord API error body is no longer forwarded to the client. Failed
+    token exchanges return a generic { error: 'Token exchange failed' } with
+    HTTP 401, discarding internal Discord error details.
+
+================================================================================
