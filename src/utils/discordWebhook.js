@@ -31,6 +31,12 @@ export async function postCatchResult({
   chance,
   spriteUrl,
 }) {
+  // Convert Discord's /sprites proxy prefix back to the absolute GitHub URL
+  // so the webhook embed thumbnail works outside of Discord's iframe context.
+  const absoluteSpriteUrl = spriteUrl?.startsWith('/sprites/')
+    ? spriteUrl.replace('/sprites/', 'https://raw.githubusercontent.com/')
+    : (spriteUrl ?? null);
+
   try {
     const res = await fetch('/api/webhook', {
       method:  'POST',
@@ -44,7 +50,7 @@ export async function postCatchResult({
         ballName,
         success,
         chance,
-        spriteUrl: spriteUrl ?? null,
+        spriteUrl: absoluteSpriteUrl,
       }),
     });
 
