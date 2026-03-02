@@ -99,7 +99,7 @@ setInterval(() => {
 // ── OAuth Token Exchange ───────────────────────────────────────────────────────
 // Discord Activity SDK gives the client an auth code.
 // We exchange it here for an access token using the client secret.
-app.post('/api/token', rateLimit(60_000, 10), async (req, res) => {
+app.post(['/api/token', '/token'], rateLimit(60_000, 10), async (req, res) => {
   console.log('TOKEN REQUEST RECEIVED');
   const { code } = req.body;
   console.log(`[token] Exchange request received, code present: ${!!code}`);
@@ -186,7 +186,7 @@ function sanitize(str, maxLen = 256) {
   return str.replace(MENTION_RE, '[mention removed]').slice(0, maxLen);
 }
 
-app.post('/api/webhook', rateLimit(60_000, 30), async (req, res) => {
+app.post(['/api/webhook', '/webhook'], rateLimit(60_000, 30), async (req, res) => {
   console.log('WEBHOOK REQUEST RECEIVED');
   console.log('[webhook] Request body:', JSON.stringify(req.body));
 
