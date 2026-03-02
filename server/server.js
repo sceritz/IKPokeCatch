@@ -100,6 +100,7 @@ setInterval(() => {
 // Discord Activity SDK gives the client an auth code.
 // We exchange it here for an access token using the client secret.
 app.post('/api/token', rateLimit(60_000, 10), async (req, res) => {
+  console.log('TOKEN REQUEST RECEIVED');
   const { code } = req.body;
   console.log(`[token] Exchange request received, code present: ${!!code}`);
 
@@ -186,6 +187,7 @@ function sanitize(str, maxLen = 256) {
 }
 
 app.post('/api/webhook', rateLimit(60_000, 30), async (req, res) => {
+  console.log('WEBHOOK REQUEST RECEIVED');
   console.log('[webhook] Request body:', JSON.stringify(req.body));
 
   const webhookUrl = process.env.VITE_DISCORD_WEBHOOK_URL;
