@@ -122,7 +122,7 @@ app.post('/api/token', rateLimit(60_000, 10), async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error('Token exchange failed:', data);
+      console.error(`Token exchange failed — HTTP ${response.status}:`, JSON.stringify(data));
       // Return a generic error — never forward raw Discord error details to the client.
       return res.status(401).json({ error: 'Token exchange failed' });
     }
