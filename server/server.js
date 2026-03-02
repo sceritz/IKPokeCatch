@@ -282,7 +282,7 @@ app.post('/api/webhook', rateLimit(60_000, 30), async (req, res) => {
     }
 
     console.log(`[webhook] Posted successfully — HTTP ${response.status}`);
-    res.status(204).end();
+    res.set('Cache-Control', 'no-store').status(204).end();
   } catch (err) {
     console.error('[webhook] Proxy error:', err.message, err.stack);
     res.status(500).json({ error: 'Internal server error' });
